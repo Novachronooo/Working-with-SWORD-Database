@@ -10,9 +10,6 @@ import hvplot.xarray
 import zipfile
 import earthaccess
 
-# Authentication for Earth Access
-auth = earthaccess.login(persist=True)
-
 input_shapefile = "D:\\Environment Engineering\\Project\\ARCGIS\\OHIO_Basin_Extracted_From_HB74.shp"
 
 #read shapefile using geopandas
