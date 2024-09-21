@@ -10,7 +10,7 @@ import hvplot.xarray
 import zipfile
 import earthaccess
 
-input_shapefile = "D:\\Environment Engineering\\Project\\ARCGIS\\OHIO_Basin_Extracted_From_HB74.shp"
+input_shapefile = "D:\\Environment Engineering\\Project\\ARCGIS\\OHIO_BASIN_Extracted_From_HB74.shp"
 
 #read shapefile using geopandas
 Ohio_Basin_df = gpd.read_file(input_shapefile)
@@ -31,10 +31,10 @@ for index, row in Ohio_Basin_df.iterrows():
         pass_numbers.update(orbit_values)
 
     # Process 'river_name' column
-    if pd.notna(row[river_column_name]) and row[river_column_name] is not None:
-        rivers.add(row[river_column_name].strip())
+    rivers.add(row[river_column_name].strip())
 #convert the set to a list
 pass_numbers = list(pass_numbers)  
 print(pass_numbers)
 
 rivers = list(rivers)
+
