@@ -64,9 +64,10 @@ for col in SWOT_HR_df.columns:
     if col.startswith('dschg'):
         SWOT_HR_df[col] = SWOT_HR_df[col].astype(str)
 
-#filter out the SWOT_HR_df such that it contains only those rows where the value from pass_extract.rivers is present
-SWOT_HR_df = SWOT_HR_df[SWOT_HR_df['river_name'].isin(pass_extract.rivers)]
+#filter out the SWOT_HR_df such that it contains only those rows where the value for our reach_ids are present
+SWOT_HR_df['reach_id'] = pd.to_numeric(SWOT_HR_df['reach_id'], errors='coerce')
+SWOT_HR_df = SWOT_HR_df[SWOT_HR_df['reach_id'].isin(pass_extract.reach_ids)]
 # Write shapefile 
 SWOT_HR_df.to_file("Ohio_Basin_shapefile_output_filtered.shp")
-print(f"Filtered shapefile saved to {'Ohio_Basin_shapefile_output_filtered.shp'}") 
+print(f"Filtered shapefile saved to {'Ohio_Basin_shapefile_output_filtered.shp'}")
 
