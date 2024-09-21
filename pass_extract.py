@@ -20,7 +20,7 @@ pass_numbers = set()
 rivers = set()
 
 column_name = 'swot_orbit'
-river_column_name = 'river_names'
+river_column_name = 'river_name'
 #loop through each row in the shapefile
 for index, row in Ohio_Basin_df.iterrows():
     #split the pass numbers in 'swot_orbit' column column 
@@ -30,7 +30,7 @@ for index, row in Ohio_Basin_df.iterrows():
         #add the pass numbers to the set
         pass_numbers.update(orbit_values)
 
-    # Process 'river_names' column
+    # Process 'river_name' column
     if pd.notna(row[river_column_name]) and row[river_column_name] is not None:
         rivers.add(row[river_column_name].strip())
 #convert the set to a list
