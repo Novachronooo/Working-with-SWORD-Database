@@ -17,10 +17,10 @@ Ohio_Basin_df = gpd.read_file(input_shapefile)
 
 pass_numbers = set()
 
-rivers = set()
+reach_ids = set()
 
 column_name = 'swot_orbit'
-river_column_name = 'river_name'
+reach_ids_column = 'reach_id'
 #loop through each row in the shapefile
 for index, row in Ohio_Basin_df.iterrows():
     #split the pass numbers in 'swot_orbit' column column 
@@ -29,12 +29,12 @@ for index, row in Ohio_Basin_df.iterrows():
 
         #add the pass numbers to the set
         pass_numbers.update(orbit_values)
-
-    # Process 'river_name' column
-    rivers.add(row[river_column_name].strip())
+    if pd.notna(row[reach_ids_column]) and row[reach_ids_column] is not None:
+        reach_ids.add(float(row[reach_ids_column]))
 #convert the set to a list
 pass_numbers = list(pass_numbers)  
-print(pass_numbers)
 
-rivers = list(rivers)
+reach_ids = list(reach_ids)
+
+
 
