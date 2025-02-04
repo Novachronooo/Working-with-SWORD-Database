@@ -23,7 +23,7 @@ column_name = 'swot_orbit'
 reach_ids_column = 'reach_id'
 #loop through each row in the shapefile
 for index, row in Ohio_Basin_df.iterrows():
-    #split the pass numbers in 'swot_orbit' column column 
+    #split the pass numbers in 'swot_orbit' column 
     if pd.notna(row[column_name]) and row[column_name] is not None:
         orbit_values = [values.strip() for values in row[column_name].split()]
 
