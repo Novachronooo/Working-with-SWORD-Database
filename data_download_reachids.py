@@ -1,42 +1,50 @@
 import requests
 import json
-import pprint
-import xarray as xr
-import geojson
-import matplotlib.pyplot as plt
-import contextily as cx
-import plotly.graph_objects as go
-from IPython.display import JSON, Image
-import earthaccess
 import pandas as pd
+import numpy as np
 import os
 import time
 from pathlib import Path
+from io import StringIO
+from datetime import datetime
 
-# Authentication for Earth Access
-auth = earthaccess.login(persist=True)
-
-def response_to_FeatureCollection(response):
+def filter_reach_ids_with_valid_discharge(df):
     """
-    This function will return a geojson.FeatureCollection representation of the features found in the provided response.
+    Filter reach IDs to only include those where all discharge columns have non-NA values.
+    
     Parameters
     ----------
-        response : requests.Response - a Response object returned from a GET request on the rivers or nodes endpoint.
+    df : pandas.DataFrame
+        The input dataframe with discharge columns
+    
     Returns
     -------
-        geojson.FeatureCollection - FeatureCollection containing all features extracted from the response.
+    list : List of unique reach IDs with valid discharge data
     """
-    featureList = []
-    for reach_id, reach_json in response.json()['results'].items():
-        reach_feature = geojson.loads(json.dumps(reach_json))
-        reach_feature['properties']={k:v for k,v in reach_json.items() if k not in ['geojson', 'geometry']}
-        featureList.append(reach_feature)
-    featureCollection = geojson.FeatureCollection(featureList)
-    return featureCollection
+    print("Filtering reach IDs based on discharge data availability...")
+    
+    # Find all columns that start with "discharge_"
+    discharge_columns = [col for col in df.columns if col.startswith('discharge_')]
+    print(f"Found discharge columns: {discharge_columns}")
+    
+    # Filter rows where all discharge columns are not NA/null
+    # Using notna() to check for non-NA values across all discharge columns
+    mask = df[discharge_columns].notna().all(axis=1)
+    filtered_df = df[mask]
+    
+    print(f"Original dataset: {len(df)} rows")
+    print(f"After filtering for complete discharge data: {len(filtered_df)} rows")
+    
+    # Get unique reach IDs from filtered data
+    unique_reach_ids = filtered_df['reach_id'].unique()
+    
+    print(f"Unique reach IDs with complete discharge data: {len(unique_reach_ids)}")
+    
+    return unique_reach_ids
 
-def download_data_for_reach(reach_id, base_download_dir="datasets/data_downloads"):
+def download_timeseries_for_reach(reach_id, base_download_dir="datasets/timeseries_downloads"):
     """
-    Download SWOT data for a specific reach ID.
+    Download time series data for a specific reach ID using the API.
     
     Parameters
     ----------
@@ -52,52 +60,73 @@ def download_data_for_reach(reach_id, base_download_dir="datasets/data_downloads
     try:
         print(f"Processing reach ID: {reach_id}")
         
-        # Get reach information
-        response_reach = requests.get(f"https://fts.podaac.earthdata.nasa.gov/rivers/reach/{reach_id}")
+        # Define query parameters
+        feature = "Reach"
+        feature_id = str(reach_id)
+        start_time = "2023-03-30T00:00:00Z"
+        end_time = "2025-01-25T00:00:00Z"
+        output = "csv"
+        fields = "reach_id,time_str,wse,width"
         
-        if response_reach.status_code != 200:
-            print(f"  Error: Could not fetch data for reach {reach_id}. Status code: {response_reach.status_code}")
-            return False
-        
-        featureCollection_reach = response_to_FeatureCollection(response_reach)
-        
-        if not featureCollection_reach['features']:
-            print(f"  Warning: No features found for reach {reach_id}")
-            return False
-        
-        # Extract coordinates
-        lats = [xy[1] for feature in featureCollection_reach['features'] for xy in feature['coordinates']]
-        lons = [xy[0] for feature in featureCollection_reach['features'] for xy in feature['coordinates']]
-        
-        if not lats or not lons:
-            print(f"  Warning: No coordinates found for reach {reach_id}")
-            return False
-        
-        # Find bounding box
-        maxlat, maxlon, minlat, minlon = max(lats), max(lons), min(lats), min(lons)
-        
-        print(f"  Bounding box: ({minlon:.4f}, {minlat:.4f}, {maxlon:.4f}, {maxlat:.4f})")
-        
-        # Search for SWOT data
-        results = earthaccess.search_data(
-            short_name='SWOT_L2_HR_Raster_2.0', 
-            bounding_box=(minlon, minlat, maxlon, maxlat)
+        # Build the URL
+        url = (
+            f"https://soto.podaac.earthdatacloud.nasa.gov/hydrocron/v1/timeseries?"
+            f"feature={feature}&feature_id={feature_id}&start_time={start_time}"
+            f"&end_time={end_time}&output={output}&fields={fields}"
         )
         
-        if not results:
-            print(f"  Warning: No SWOT data found for reach {reach_id}")
+        print(f"  Making API request...")
+        
+        # Make the GET request
+        response = requests.get(url)
+        
+        # Check if the request was successful
+        if response.status_code != 200:
+            print(f"  Error: API request failed. Status code: {response.status_code}")
+            print(f"  Response: {response.text}")
             return False
         
-        # Create download directory for this reach
-        reach_download_dir = os.path.join(base_download_dir, f"reach_{reach_id}")
-        Path(reach_download_dir).mkdir(parents=True, exist_ok=True)
+        # Parse JSON response
+        hydrocron_response = response.json()
         
-        # Download data
-        print(f"  Found {len(results)} datasets. Downloading first dataset...")
-        downloaded_files = earthaccess.download([results[0]], reach_download_dir)
+        # Check if results exist
+        if 'results' not in hydrocron_response or 'csv' not in hydrocron_response['results']:
+            print(f"  Warning: No CSV data found in response for reach {reach_id}")
+            return False
         
-        print(f"  Successfully downloaded data for reach {reach_id}")
-        print(f"  Files saved to: {reach_download_dir}")
+        # Extract CSV string from the JSON response
+        csv_str = hydrocron_response['results']['csv']
+        
+        if not csv_str or csv_str.strip() == '':
+            print(f"  Warning: Empty CSV data for reach {reach_id}")
+            return False
+        
+        # Convert CSV string to DataFrame
+        df = pd.read_csv(StringIO(csv_str))
+        
+        if df.empty:
+            print(f"  Warning: Empty DataFrame for reach {reach_id}")
+            return False
+        
+        # Convert time_str to datetime and format as MM/DD/YYYY
+        if 'time_str' in df.columns:
+            # Parse ISO datetime format and convert to MM/DD/YYYY
+            df['time_str'] = pd.to_datetime(df['time_str']).dt.strftime('%m/%d/%Y')
+        
+        print(f"  Successfully retrieved {len(df)} records")
+        
+        # Create download directory if it doesn't exist
+        Path(base_download_dir).mkdir(parents=True, exist_ok=True)
+        
+        # Save DataFrame as CSV with reach_id as filename
+        output_filename = f"{reach_id}.csv"
+        output_path = os.path.join(base_download_dir, output_filename)
+        
+        df.to_csv(output_path, index=False)
+        
+        print(f"  Data saved to: {output_path}")
+        print(f"  Sample data:")
+        print(f"  {df.head(2).to_string(index=False)}")
         
         return True
         
@@ -114,12 +143,18 @@ def main():
         print("Reading CSV file...")
         df = pd.read_csv(csv_file_path)
         
-        # Extract unique reach IDs
-        unique_reach_ids = df['reach_id'].unique()
-        print(f"Found {len(unique_reach_ids)} unique reach IDs")
+        print(f"CSV file loaded successfully. Shape: {df.shape}")
+        print(f"Columns: {list(df.columns)}")
+        
+        # Filter reach IDs based on discharge data availability
+        unique_reach_ids = filter_reach_ids_with_valid_discharge(df)
+        
+        if len(unique_reach_ids) == 0:
+            print("No reach IDs found with complete discharge data. Exiting.")
+            return
         
         # Create base download directory
-        base_download_dir = "datasets/data_downloads"
+        base_download_dir = "datasets/timeseries_downloads"
         Path(base_download_dir).mkdir(parents=True, exist_ok=True)
         
         # Process each reach ID
@@ -129,15 +164,15 @@ def main():
         for i, reach_id in enumerate(unique_reach_ids, 1):
             print(f"\n[{i}/{len(unique_reach_ids)}] Processing reach ID: {reach_id}")
             
-            success = download_data_for_reach(reach_id, base_download_dir)
+            success = download_timeseries_for_reach(reach_id, base_download_dir)
             
             if success:
                 successful_downloads += 1
             else:
                 failed_downloads += 1
             
-            # Add a small delay between requests to be respectful to the server
-            time.sleep(1)
+            # Add a delay between requests to be respectful to the server
+            time.sleep(2)  # Increased delay for API requests
         
         # Summary
         print(f"\n=== Download Summary ===")
@@ -145,6 +180,7 @@ def main():
         print(f"Successful downloads: {successful_downloads}")
         print(f"Failed downloads: {failed_downloads}")
         print(f"Success rate: {successful_downloads/len(unique_reach_ids)*100:.1f}%")
+        print(f"CSV files saved to: {base_download_dir}")
         
     except FileNotFoundError:
         print(f"Error: Could not find CSV file at {csv_file_path}")
