@@ -133,7 +133,7 @@ def download_timeseries_for_reach(reach_id, base_download_dir="datasets/timeseri
         start_time = "2023-03-30T00:00:00Z"
         end_time = "2025-01-25T00:00:00Z"
         output = "csv"
-        fields = "reach_id,time_str,wse,width,wse_q"
+        fields = "reach_id,time_str,wse,width,reach_q"
         
         # Build the URL
         url = (
